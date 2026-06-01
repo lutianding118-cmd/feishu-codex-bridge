@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="640" viewBox="0 0 1100 640">
+  <rect width="1100" height="640" fill="#0f1117"/>
+  <rect x="70" y="64" width="960" height="512" rx="18" fill="#171a23" stroke="#303645"/>
+  <text x="108" y="116" font-family="Arial,'Microsoft YaHei',sans-serif" font-size="30" font-weight="700" fill="#f8fafc">工作区设置页面示意</text>
+  <text x="108" y="150" font-family="Arial,'Microsoft YaHei',sans-serif" font-size="15" fill="#aab3c2">地址：http://127.0.0.1:3457/settings</text>
+  <g font-family="Arial,'Microsoft YaHei',sans-serif">
+    <text x="110" y="210" font-size="16" fill="#cbd5e1">飞书 App ID</text>
+    <rect x="110" y="226" width="400" height="44" rx="8" fill="#0b0d12" stroke="#313846"/>
+    <text x="128" y="254" font-size="15" fill="#e5e7eb">cli_xxxxxxxxxxxx</text>
+    <text x="590" y="210" font-size="16" fill="#cbd5e1">飞书 App Secret</text>
+    <rect x="590" y="226" width="360" height="44" rx="8" fill="#0b0d12" stroke="#313846"/>
+    <text x="608" y="254" font-size="15" fill="#e5e7eb">粘贴应用密钥</text>
+    <text x="110" y="308" font-size="16" fill="#cbd5e1">默认工作区</text>
+    <rect x="110" y="324" width="840" height="44" rx="8" fill="#0b0d12" stroke="#313846"/>
+    <text x="128" y="352" font-size="15" fill="#e5e7eb">D:\workspace</text>
+    <text x="110" y="406" font-size="16" fill="#cbd5e1">Codex 命令</text>
+    <rect x="110" y="422" width="400" height="44" rx="8" fill="#0b0d12" stroke="#313846"/>
+    <text x="128" y="450" font-size="15" fill="#e5e7eb">codex</text>
+    <text x="590" y="406" font-size="16" fill="#cbd5e1">默认心跳间隔 ms（飞书进度反馈）</text>
+    <rect x="590" y="422" width="360" height="44" rx="8" fill="#0b0d12" stroke="#60a5fa" stroke-width="2"/>
+    <text x="608" y="450" font-size="15" fill="#e5e7eb">60000</text>
+    <text x="590" y="492" font-size="14" fill="#93c5fd">长任务每 60 秒向飞书发送一次可见过程；飞书里可用 /heartbeat 30s 动态修改。</text>
+    <rect x="110" y="510" width="132" height="44" rx="8" fill="#2563eb"/>
+    <text x="144" y="538" font-size="16" font-weight="700" fill="#ffffff">保存设置</text>
+  </g>
+</svg>
+

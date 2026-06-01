@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="620" viewBox="0 0 1100 620">
+  <rect width="1100" height="620" fill="#f7f8fb"/>
+  <text x="48" y="56" font-family="Arial,'Microsoft YaHei',sans-serif" font-size="28" font-weight="700" fill="#172033">新手安装流程</text>
+  <g font-family="Arial,'Microsoft YaHei',sans-serif" font-size="15">
+    <rect x="70" y="112" width="250" height="110" rx="14" fill="#ffffff" stroke="#cbd5e1"/>
+    <text x="96" y="154" font-size="21" font-weight="700" fill="#0f172a">1. 准备飞书应用</text>
+    <text x="96" y="186" fill="#475569">创建企业自建应用</text>
+    <text x="96" y="210" fill="#475569">复制 App ID / Secret</text>
+    <rect x="424" y="112" width="250" height="110" rx="14" fill="#ffffff" stroke="#cbd5e1"/>
+    <text x="450" y="154" font-size="21" font-weight="700" fill="#0f172a">2. 配置机器人权限</text>
+    <text x="450" y="186" fill="#475569">启用机器人能力</text>
+    <text x="450" y="210" fill="#475569">订阅接收消息事件</text>
+    <rect x="778" y="112" width="250" height="110" rx="14" fill="#ffffff" stroke="#cbd5e1"/>
+    <text x="804" y="154" font-size="21" font-weight="700" fill="#0f172a">3. 安装 Codex CLI</text>
+    <text x="804" y="186" fill="#475569">确认 codex 可运行</text>
+    <text x="804" y="210" fill="#475569">完成本机登录</text>
+    <rect x="70" y="318" width="250" height="110" rx="14" fill="#ffffff" stroke="#cbd5e1"/>
+    <text x="96" y="360" font-size="21" font-weight="700" fill="#0f172a">4. 下载源码</text>
+    <text x="96" y="392" fill="#475569">npm install</text>
+    <text x="96" y="416" fill="#475569">复制 .env.example</text>
+    <rect x="424" y="318" width="250" height="110" rx="14" fill="#eaf2ff" stroke="#93c5fd"/>
+    <text x="450" y="360" font-size="21" font-weight="700" fill="#0f172a">5. 填写配置</text>
+    <text x="450" y="392" fill="#475569">App ID / Secret</text>
+    <text x="450" y="416" fill="#475569">默认工作区、Codex 命令</text>
+    <rect x="778" y="318" width="250" height="110" rx="14" fill="#ffffff" stroke="#cbd5e1"/>
+    <text x="804" y="360" font-size="21" font-weight="700" fill="#0f172a">6. 启动使用</text>
+    <text x="804" y="392" fill="#475569">npm run start</text>
+    <text x="804" y="416" fill="#475569">飞书发送 /status</text>
+    <path d="M320 167 L424 167" stroke="#2563eb" stroke-width="3" marker-end="url(#arrow)"/>
+    <path d="M674 167 L778 167" stroke="#2563eb" stroke-width="3" marker-end="url(#arrow)"/>
+    <path d="M903 222 C903 275 195 275 195 318" fill="none" stroke="#2563eb" stroke-width="3" marker-end="url(#arrow)"/>
+    <path d="M320 373 L424 373" stroke="#2563eb" stroke-width="3" marker-end="url(#arrow)"/>
+    <path d="M674 373 L778 373" stroke="#2563eb" stroke-width="3" marker-end="url(#arrow)"/>
+    <rect x="180" y="504" width="740" height="62" rx="14" fill="#ffffff" stroke="#cbd5e1"/>
+    <text x="214" y="542" font-size="18" font-weight="700" fill="#0f172a">验证成功标志：管理页 /health 返回 ok，飞书里收到 Codex 已收到、Codex 开始处理、Codex 仍在运行。</text>
+  </g>
+  <defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#2563eb"/></marker></defs>
+</svg>
+

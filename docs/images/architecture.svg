@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="520" viewBox="0 0 1100 520">
+  <rect width="1100" height="520" fill="#f7f8fb"/>
+  <text x="48" y="56" font-family="Arial,'Microsoft YaHei',sans-serif" font-size="28" font-weight="700" fill="#172033">整体架构</text>
+  <text x="48" y="88" font-family="Arial,'Microsoft YaHei',sans-serif" font-size="15" fill="#5f6b7a">飞书长连接负责接收消息，桥接服务负责调用本地 Codex CLI，并把可见进度和结果发回飞书。</text>
+  <g font-family="Arial,'Microsoft YaHei',sans-serif">
+    <rect x="54" y="150" width="210" height="120" rx="14" fill="#ffffff" stroke="#cbd5e1"/>
+    <text x="86" y="195" font-size="22" font-weight="700" fill="#0f172a">飞书用户</text>
+    <text x="86" y="228" font-size="15" fill="#475569">发送需求、查看进度</text>
+    <text x="86" y="252" font-size="15" fill="#475569">使用 /status /heartbeat</text>
+    <rect x="328" y="150" width="230" height="120" rx="14" fill="#ffffff" stroke="#cbd5e1"/>
+    <text x="360" y="195" font-size="22" font-weight="700" fill="#0f172a">飞书开放平台</text>
+    <text x="360" y="228" font-size="15" fill="#475569">机器人事件长连接</text>
+    <text x="360" y="252" font-size="15" fill="#475569">不需要公网回调地址</text>
+    <rect x="622" y="132" width="230" height="156" rx="14" fill="#eaf2ff" stroke="#93c5fd"/>
+    <text x="654" y="176" font-size="22" font-weight="700" fill="#0f172a">Bridge 服务</text>
+    <text x="654" y="210" font-size="15" fill="#475569">消息路由、队列</text>
+    <text x="654" y="234" font-size="15" fill="#475569">进度心跳、管理页</text>
+    <text x="654" y="258" font-size="15" fill="#475569">状态持久化</text>
+    <rect x="902" y="150" width="150" height="120" rx="14" fill="#ffffff" stroke="#cbd5e1"/>
+    <text x="930" y="195" font-size="22" font-weight="700" fill="#0f172a">Codex CLI</text>
+    <text x="930" y="228" font-size="15" fill="#475569">本地执行</text>
+    <text x="930" y="252" font-size="15" fill="#475569">JSON 事件输出</text>
+    <path d="M264 210 L328 210" stroke="#2563eb" stroke-width="3" marker-end="url(#arrow)"/>
+    <path d="M558 210 L622 210" stroke="#2563eb" stroke-width="3" marker-end="url(#arrow)"/>
+    <path d="M852 210 L902 210" stroke="#2563eb" stroke-width="3" marker-end="url(#arrow)"/>
+    <path d="M902 245 L852 245" stroke="#10b981" stroke-width="3" marker-end="url(#arrow2)"/>
+    <path d="M622 245 L558 245" stroke="#10b981" stroke-width="3" marker-end="url(#arrow2)"/>
+    <path d="M328 245 L264 245" stroke="#10b981" stroke-width="3" marker-end="url(#arrow2)"/>
+    <rect x="254" y="350" width="610" height="92" rx="14" fill="#ffffff" stroke="#cbd5e1"/>
+    <text x="286" y="386" font-size="19" font-weight="700" fill="#0f172a">本地状态文件 .bridge-state</text>
+    <text x="286" y="418" font-size="15" fill="#475569">保存会话、任务、消息、Codex 运行记录；开源仓库不会提交这些本地运行数据。</text>
+    <path d="M737 288 L737 350" stroke="#64748b" stroke-width="2" stroke-dasharray="6 6" marker-end="url(#arrow3)"/>
+  </g>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#2563eb"/></marker>
+    <marker id="arrow2" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#10b981"/></marker>
+    <marker id="arrow3" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#64748b"/></marker>
+  </defs>
+</svg>
+

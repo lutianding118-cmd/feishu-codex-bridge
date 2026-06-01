@@ -1,0 +1,26 @@
+{
+  "name": "feishu-codex-bridge",
+  "version": "1.0.0",
+  "private": false,
+  "type": "module",
+  "description": "Feishu bot bridge to local Codex CLI",
+  "license": "MIT",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc --noEmit",
+    "start": "tsx src/server.ts"
+  },
+  "dependencies": {
+    "@larksuiteoapi/node-sdk": "^1.62.1",
+    "cors": "^2.8.5",
+    "dotenv": "^17.4.2",
+    "express": "^5.1.0",
+    "ws": "^8.20.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.3",
+    "@types/node": "^22.15.0",
+    "typescript": "^5.8.3",
+    "tsx": "^4.19.0"
+  }
+}

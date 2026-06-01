@@ -1,0 +1,29 @@
+# local secrets
+.env
+.env.*
+!.env.example
+
+# runtime state and logs
+.bridge-state/
+logs/
+*.log
+
+# dependencies and generated packages
+node_modules/
+dist/
+runtime/
+codex-bin/
+service/*.exe
+*.exe
+*.exe.bak-*
+
+# local workflow/output artifacts
+.super-dev/
+output/
+
+# editor/system files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+

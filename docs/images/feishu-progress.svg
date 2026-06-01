@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="620" viewBox="0 0 1100 620">
+  <rect width="1100" height="620" fill="#f7f8fb"/>
+  <text x="48" y="56" font-family="Arial,'Microsoft YaHei',sans-serif" font-size="28" font-weight="700" fill="#172033">飞书端进度反馈示意</text>
+  <g font-family="Arial,'Microsoft YaHei',sans-serif">
+    <rect x="80" y="112" width="430" height="92" rx="14" fill="#ffffff" stroke="#cbd5e1"/>
+    <text x="108" y="146" font-size="18" font-weight="700" fill="#0f172a">用户</text>
+    <text x="108" y="176" font-size="16" fill="#475569">/run 帮我修复项目构建失败</text>
+    <rect x="590" y="112" width="430" height="92" rx="14" fill="#eaf2ff" stroke="#93c5fd"/>
+    <text x="618" y="146" font-size="18" font-weight="700" fill="#0f172a">Bridge</text>
+    <text x="618" y="176" font-size="16" fill="#475569">【Codex 已收到】任务已入队，给出任务 ID</text>
+    <rect x="590" y="236" width="430" height="116" rx="14" fill="#ffffff" stroke="#cbd5e1"/>
+    <text x="618" y="270" font-size="18" font-weight="700" fill="#0f172a">开始处理</text>
+    <text x="618" y="300" font-size="16" fill="#475569">【Codex 开始处理】</text>
+    <text x="618" y="326" font-size="16" fill="#475569">心跳：每 60 秒反馈一次</text>
+    <rect x="590" y="384" width="430" height="142" rx="14" fill="#ffffff" stroke="#cbd5e1"/>
+    <text x="618" y="418" font-size="18" font-weight="700" fill="#0f172a">运行中心跳</text>
+    <text x="618" y="448" font-size="16" fill="#475569">【Codex 仍在运行】</text>
+    <text x="618" y="474" font-size="16" fill="#475569">可见过程：正在执行工具 / 正在分析任务</text>
+    <text x="618" y="500" font-size="16" fill="#475569">建议：当前会话忙，新指令会排队</text>
+    <rect x="80" y="384" width="430" height="142" rx="14" fill="#ffffff" stroke="#cbd5e1"/>
+    <text x="108" y="418" font-size="18" font-weight="700" fill="#0f172a">用户可随时发送</text>
+    <text x="108" y="448" font-size="16" fill="#475569">/status 查看当前忙闲</text>
+    <text x="108" y="474" font-size="16" fill="#475569">/heartbeat 30s 调整心跳</text>
+    <text x="108" y="500" font-size="16" fill="#475569">/td 查看任务详情</text>
+    <path d="M510 158 L590 158" stroke="#2563eb" stroke-width="3" marker-end="url(#arrow)"/>
+    <path d="M805 204 L805 236" stroke="#2563eb" stroke-width="3" marker-end="url(#arrow)"/>
+    <path d="M805 352 L805 384" stroke="#2563eb" stroke-width="3" marker-end="url(#arrow)"/>
+    <path d="M590 455 L510 455" stroke="#10b981" stroke-width="3" marker-end="url(#arrow2)"/>
+  </g>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#2563eb"/></marker>
+    <marker id="arrow2" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#10b981"/></marker>
+  </defs>
+</svg>
