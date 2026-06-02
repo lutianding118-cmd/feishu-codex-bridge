@@ -43,6 +43,8 @@ internal static class OneClickInstaller
             Directory.CreateDirectory(target);
             CopyDirectory(extractPath, target);
             CreateDesktopShortcut(target);
+            CreateStartupTask(target);
+            CreateHealthCheckTask(target);
 
             string app = Path.Combine(target, "FeishuCodexBridge.exe");
             Process.Start(new ProcessStartInfo
@@ -119,6 +121,52 @@ internal static class OneClickInstaller
             shortcutType.InvokeMember("WorkingDirectory", BindingFlags.SetProperty, null, shortcut, new object[] { target });
             shortcutType.InvokeMember("Description", BindingFlags.SetProperty, null, shortcut, new object[] { "Feishu Codex Bridge" });
             shortcutType.InvokeMember("Save", BindingFlags.InvokeMethod, null, shortcut, null);
+        }
+        catch
+        {
+        }
+    }
+
+    private static void CreateStartupTask(string target)
+    {
+        string script = Path.Combine(target, "scripts", "start-hidden.vbs");
+        if (!File.Exists(script)) return;
+
+        string taskCommand = "wscript.exe " + QuoteForTask(script);
+        RunSchtasks("/Create /TN \"FeishuCodexBridgeStartup\" /SC ONLOGON /TR \"" + taskCommand + "\" /F");
+    }
+
+    private static void CreateHealthCheckTask(string target)
+    {
+        string script = Path.Combine(target, "scripts", "health-check-hidden.vbs");
+        if (!File.Exists(script)) return;
+
+        string taskCommand = "wscript.exe " + QuoteForTask(script);
+        RunSchtasks("/Create /TN \"FeishuCodexBridgeHealthCheck\" /SC MINUTE /MO 5 /TR \"" + taskCommand + "\" /F");
+    }
+
+    private static string QuoteForTask(string path)
+    {
+        return "\\\"" + path + "\\\"";
+    }
+
+    private static void RunSchtasks(string arguments)
+    {
+        try
+        {
+            Process process = Process.Start(new ProcessStartInfo
+            {
+                FileName = "schtasks.exe",
+                Arguments = arguments,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            });
+            if (process != null)
+            {
+                process.WaitForExit(10000);
+            }
         }
         catch
         {

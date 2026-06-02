@@ -18,6 +18,7 @@
 - 长任务会持续向飞书发送心跳。
 - 心跳会展示 Codex 可见过程，例如正在执行工具、正在分析、阶段说明。
 - 支持 `/heartbeat 30s` 动态调整心跳间隔。
+- 支持飞书和本机之间收发文件：图片可直接预览，文本/Markdown 直接发为可阅读内容，PDF/Office 文件走飞书文件消息。
 - 管理页可以修改飞书密钥、默认工作区、Codex 命令、心跳间隔等配置。
 - 本地保存飞书会话与 Codex `thread_id`，同一个聊天能续接上下文。
 
@@ -31,7 +32,7 @@
   -> Bridge 把进度和结果发回飞书
 ```
 
-飞书长连接只负责把飞书消息实时推给桥接服务。Codex 的进展来自本地 Codex CLI 的 JSON 事件输出，桥接服务会把可见事件转发给飞书；如果 Codex 暂时没有新事件，会用心跳告诉你“仍在运行”。
+飞书长连接只负责把飞书消息实时推给桥接服务。Codex 的进展来自本地 Codex CLI 的 JSON 事件输出。桥接模式和 `/run` 任务会把可见事件转发给飞书；直连模式默认安静，只返回最终回复，长时间运行时最多发一条“仍在处理”提示。
 
 ## 新手安装流程
 
@@ -206,7 +207,7 @@ http://127.0.0.1:3457/settings
 
 ![飞书进度反馈](docs/images/feishu-progress.svg)
 
-当你发送一个需求后，飞书会陆续收到：
+桥接模式或 `/run` 任务中，当你发送一个需求后，飞书会陆续收到：
 
 ```text
 【Codex 已收到】
@@ -221,7 +222,7 @@ http://127.0.0.1:3457/settings
 ```text
 【Codex 仍在运行】
 内容: 帮我修复项目构建失败
-模式: 直连模式
+模式: 桥接模式
 已运行: 5分0秒
 可见过程: 正在执行工具: shell_command
 队列: 当前会话没有等待项
@@ -251,6 +252,8 @@ http://127.0.0.1:3457/settings
 | `/mode direct` | 切换到直连模式 |
 | `/mode bridge` | 切换到桥接模式 |
 | `/run <任务内容>` | 创建可跟踪任务 |
+| `/file <本机文件路径>` | 把本机文件发送到当前飞书聊天 |
+| `/发文件 <本机文件路径>` | 中文文件发送命令 |
 | `/list` | 查看所有未完成任务 |
 | `/task` | 查看当前聊天任务 |
 | `/td` | 查看当前聊天第一个任务详情 |
@@ -267,7 +270,7 @@ http://127.0.0.1:3457/settings
 FEISHU_MESSAGE_MODE=direct
 ```
 
-普通飞书消息直接进入 Codex。适合日常问答、快速执行、个人使用。
+普通飞书消息直接进入 Codex。适合日常问答、快速执行、个人使用。直连模式是安静模式：不会发送“已收到”“开始处理”和持续进度，只发送最终回复；如果同一个聊天已有消息在处理，新消息会收到一条简短排队提示。
 
 ### 桥接模式
 
@@ -278,6 +281,36 @@ FEISHU_MESSAGE_MODE=bridge
 桥接服务会识别消息意图，把执行类请求放进任务队列。适合团队使用、长任务跟踪、需要 `/list` 和 `/td` 的场景。
 
 无论当前模式是什么，显式发送 `/run <任务内容>` 都会创建可跟踪任务。
+
+## 飞书文件收发
+
+发送本机文件到飞书：
+
+```text
+/file E:\work_code\project\output\report.pdf
+/发文件 E:\work_code\project\output\notes.md
+```
+
+也可以用自然语言：
+
+```text
+把 E:\work_code\project\output\report.pdf 发我
+```
+
+处理规则：
+
+- 图片按飞书图片消息发送，可在飞书 App 内直接查看。
+- `.txt`、`.md`、`.json`、`.csv` 等文本文件会直接分段发送为可阅读文本。
+- PDF、Word、Excel、PPT、MP4、Opus 按飞书文件消息发送，优先支持 App 内预览。
+- 压缩包不适合在飞书 App 内直接预览，建议发送压缩包内具体的文档、图片或文本文件。
+
+飞书发来的图片或文件会下载到当前会话工作区：
+
+```text
+.feishu-inbox\YYYY-MM-DD\
+```
+
+桥接服务会把本机路径交给 Codex，后续可以直接让 Codex 分析或处理该文件。
 
 ## Windows 服务运行
 
@@ -313,6 +346,33 @@ powershell -ExecutionPolicy Bypass -File .\scripts\prepare-service-wrapper.ps1
 
 注意：Codex 登录态通常在当前 Windows 用户目录。服务如果用 LocalSystem 运行，可能读不到 Codex 登录态。建议让服务运行在已经登录过 Codex 的 Windows 用户下。
 
+## 隐藏健康检测计划任务
+
+源码提供三个脚本：
+
+```text
+scripts\start-hidden.vbs
+scripts\health-check.ps1
+scripts\health-check-hidden.vbs
+```
+
+`health-check.ps1` 会检查 `/health`、Codex 就绪状态、3457 端口、飞书 443 长连接、飞书 token 和超过 20 分钟的卡住运行。发现异常时先重启桥接工具；重启后仍异常时，会限频调用 Codex 检测修复，然后再重启。
+
+一键安装包会自动创建两个计划任务：`FeishuCodexBridgeStartup` 用于开机登录后隐藏启动桥接工具，`FeishuCodexBridgeHealthCheck` 用于每 5 分钟隐藏检测链路。
+
+用 Windows 计划任务每 5 分钟隐藏运行，避免弹出黑窗口：
+
+```powershell
+$script = (Resolve-Path .\scripts\health-check-hidden.vbs).Path
+schtasks /Create /TN "FeishuCodexBridgeHealthCheck" /SC MINUTE /MO 5 /TR "wscript.exe `"$script`"" /F
+```
+
+日志位置：
+
+```text
+logs\health\health.log
+```
+
 ## 单文件安装包
 
 如果你要发给不懂技术的人，可以生成单文件安装包：
@@ -338,6 +398,7 @@ dist\FeishuCodexBridge-OneClick-Setup.exe
 .bridge-state\tasks.json
 .bridge-state\messages.json
 .bridge-state\codex-runs.json
+.feishu-inbox\YYYY-MM-DD\
 ```
 
 这些文件只在本机使用，不应该提交到仓库。

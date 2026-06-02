@@ -3,9 +3,9 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import crypto from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createReadStream, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import type { Server } from "node:http";
-import { join, resolve } from "node:path";
+import { basename, extname, isAbsolute, join, resolve } from "node:path";
 import * as Lark from "@larksuiteoapi/node-sdk";
 import {
   classifyIntentWithCodex,
@@ -37,6 +37,9 @@ if (!startupConfig.feishuAppId || !startupConfig.feishuAppSecret) {
 
 const BRIDGE_PORT = startupConfig.bridgePort;
 const SESSION_TTL = 24 * 3600 * 1000;
+const FEISHU_MAX_FILE_BYTES = 30 * 1024 * 1024;
+const FEISHU_MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const FEISHU_TEXT_PREVIEW_LIMIT = 16000;
 const recentMessages = new Set<string>();
 
 type TaskStatus = "queued" | "running" | "done" | "failed";
@@ -293,6 +296,268 @@ async function sendFeishuTextTracked(
     console.error(`[Feishu] send failed: ${(err as Error).message}`);
     return false;
   }
+}
+
+type FeishuUploadFileType = "opus" | "mp4" | "pdf" | "doc" | "xls" | "ppt" | "stream";
+type FeishuFileDelivery = "image" | "text-preview" | "preview-file" | "download-file";
+
+function stripPathQuotes(value: string): string {
+  const text = value.trim();
+  if ((text.startsWith('"') && text.endsWith('"')) || (text.startsWith("'") && text.endsWith("'"))) {
+    return text.slice(1, -1).trim();
+  }
+  return text;
+}
+
+function resolveChatFilePath(chatId: string, input: string): string {
+  const filePath = stripPathQuotes(input);
+  if (!filePath) throw new Error("请提供文件路径。");
+  if (isAbsolute(filePath)) return resolve(filePath);
+  const session = getChatStatus(chatId);
+  return resolve(session.workspaceDir || getConfig().defaultWorkspaceDir, filePath);
+}
+
+function inferFeishuFileType(filePath: string): FeishuUploadFileType {
+  const ext = extname(filePath).toLowerCase();
+  if (ext === ".pdf") return "pdf";
+  if ([".doc", ".docx"].includes(ext)) return "doc";
+  if ([".xls", ".xlsx", ".csv"].includes(ext)) return "xls";
+  if ([".ppt", ".pptx"].includes(ext)) return "ppt";
+  if (ext === ".mp4") return "mp4";
+  if (ext === ".opus") return "opus";
+  return "stream";
+}
+
+function isFeishuPreviewFile(filePath: string): boolean {
+  return ["pdf", "doc", "xls", "ppt", "mp4", "opus"].includes(inferFeishuFileType(filePath));
+}
+
+function isFeishuImageFile(filePath: string): boolean {
+  return [".jpg", ".jpeg", ".png", ".webp", ".gif", ".tiff", ".bmp", ".ico"].includes(extname(filePath).toLowerCase());
+}
+
+function isReadableTextFile(filePath: string): boolean {
+  return [
+    ".txt",
+    ".md",
+    ".markdown",
+    ".json",
+    ".log",
+    ".csv",
+    ".yml",
+    ".yaml",
+    ".xml",
+    ".html",
+    ".css",
+    ".js",
+    ".ts",
+    ".tsx",
+    ".jsx",
+  ].includes(extname(filePath).toLowerCase());
+}
+
+function isArchiveFile(filePath: string): boolean {
+  return [".zip", ".rar", ".7z", ".tar", ".gz", ".tgz", ".bz2"].includes(extname(filePath).toLowerCase());
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
+}
+
+function safeFileName(value: string): string {
+  return value.replace(/[<>:"/\\|?*\x00-\x1F]/g, "_").trim().slice(0, 120) || `feishu-file-${Date.now()}`;
+}
+
+function parseJsonObject(value: unknown): Record<string, any> {
+  if (typeof value !== "string") return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+async function downloadFeishuMessageResource(chatId: string, msg: any, content: Record<string, any>) {
+  const messageId = String(msg?.message_id ?? "");
+  const msgType = String(msg?.message_type ?? msg?.msg_type ?? "");
+  const resourceKey = content.file_key ?? content.image_key ?? content.media_key;
+  if (!messageId || !resourceKey || !["file", "image", "audio", "media"].includes(msgType)) return undefined;
+
+  const session = getChatStatus(chatId);
+  const workspaceDir = resolve(session.workspaceDir || getConfig().defaultWorkspaceDir);
+  const inboxDir = join(workspaceDir, ".feishu-inbox", new Date().toISOString().slice(0, 10));
+  mkdirSync(inboxDir, { recursive: true });
+
+  const ext = content.file_name && extname(String(content.file_name)) ? "" : msgType === "image" ? ".jpg" : "";
+  const fileName = safeFileName(String(content.file_name ?? `${msgType}-${messageId}${ext}`));
+  const filePath = join(inboxDir, `${Date.now()}-${fileName}`);
+  const resource = await feishuClient.im.v1.messageResource.get({
+    path: {
+      message_id: messageId,
+      file_key: String(resourceKey),
+    },
+    params: {
+      type: msgType,
+    },
+  });
+  await resource.writeFile(filePath);
+  return {
+    fileName,
+    filePath,
+    msgType,
+    resourceKey: String(resourceKey),
+  };
+}
+
+function splitTextForFeishu(text: string, chunkSize = 3500): string[] {
+  const chunks: string[] = [];
+  for (let index = 0; index < text.length; index += chunkSize) {
+    chunks.push(text.slice(index, index + chunkSize));
+  }
+  return chunks.length ? chunks : [""];
+}
+
+async function sendFeishuImage(chatId: string, filePath: string, mode: FeishuMessageMode) {
+  const uploaded = await feishuClient.im.v1.image.create({
+    data: {
+      image_type: "message",
+      image: createReadStream(filePath),
+    },
+  });
+  const imageKey = uploaded?.image_key;
+  if (!imageKey) throw new Error("飞书图片上传接口没有返回 image_key。");
+
+  await feishuClient.im.v1.message.create({
+    params: { receive_id_type: "chat_id" },
+    data: {
+      receive_id: chatId,
+      msg_type: "image",
+      content: JSON.stringify({ image_key: imageKey }),
+    },
+  });
+
+  recordMessage({ chatId, mode, direction: "outbound", status: "sent", text: `图片: ${basename(filePath)}` });
+}
+
+async function sendFeishuTextPreview(chatId: string, filePath: string, size: number, mode: FeishuMessageMode) {
+  const fileName = basename(filePath);
+  const raw = readFileSync(filePath, "utf8");
+  const clipped = raw.length > FEISHU_TEXT_PREVIEW_LIMIT;
+  const content = clipped ? raw.slice(0, FEISHU_TEXT_PREVIEW_LIMIT) : raw;
+  const header = formatBlock("文件内容", [
+    `文件: ${fileName}`,
+    `大小: ${formatBytes(size)}`,
+    clipped ? `内容较长，已展示前 ${FEISHU_TEXT_PREVIEW_LIMIT} 个字符。` : "",
+  ]);
+  await sendFeishuText(chatId, header, mode);
+  const chunks = splitTextForFeishu(content);
+  for (const [index, chunk] of chunks.entries()) {
+    await sendFeishuText(chatId, chunks.length > 1 ? `【${fileName} ${index + 1}】\n${chunk}` : chunk, mode);
+  }
+}
+
+async function sendFeishuFile(chatId: string, requestedPath: string, mode: FeishuMessageMode = getConfig().feishuMessageMode) {
+  const filePath = resolveChatFilePath(chatId, requestedPath);
+  const fileName = basename(filePath);
+  try {
+    const stat = statSync(filePath);
+    if (!stat.isFile()) throw new Error("路径不是文件。");
+    if (stat.size <= 0) throw new Error("飞书不允许上传空文件。");
+    if (isArchiveFile(filePath)) {
+      throw new Error("压缩包不适合在飞书 App 内直接预览。请发送压缩包内具体的 md/txt/pdf/docx/xlsx/图片文件。");
+    }
+    if (isFeishuImageFile(filePath)) {
+      if (stat.size > FEISHU_MAX_IMAGE_BYTES) {
+        throw new Error(`图片 ${formatBytes(stat.size)} 超过飞书图片上传上限 10MB。`);
+      }
+      await sendFeishuImage(chatId, filePath, mode);
+      return { fileName, filePath, size: stat.size, delivery: "image" as FeishuFileDelivery };
+    }
+    if (isReadableTextFile(filePath)) {
+      await sendFeishuTextPreview(chatId, filePath, stat.size, mode);
+      return { fileName, filePath, size: stat.size, delivery: "text-preview" as FeishuFileDelivery };
+    }
+    if (stat.size > FEISHU_MAX_FILE_BYTES) {
+      throw new Error(`文件 ${formatBytes(stat.size)} 超过飞书 IM 文件上传上限 30MB。`);
+    }
+
+    const uploaded = await feishuClient.im.v1.file.create({
+      data: {
+        file_type: inferFeishuFileType(filePath),
+        file_name: fileName,
+        file: createReadStream(filePath),
+      },
+    });
+    const fileKey = uploaded?.file_key;
+    if (!fileKey) throw new Error("飞书上传接口没有返回 file_key。");
+
+    await feishuClient.im.v1.message.create({
+      params: { receive_id_type: "chat_id" },
+      data: {
+        receive_id: chatId,
+        msg_type: "file",
+        content: JSON.stringify({ file_key: fileKey }),
+      },
+    });
+
+    const text = `文件: ${fileName} (${formatBytes(stat.size)})`;
+    recordMessage({ chatId, mode, direction: "outbound", status: "sent", text });
+    return {
+      fileName,
+      filePath,
+      size: stat.size,
+      delivery: isFeishuPreviewFile(filePath) ? ("preview-file" as FeishuFileDelivery) : ("download-file" as FeishuFileDelivery),
+    };
+  } catch (err) {
+    recordMessage({
+      chatId,
+      mode,
+      direction: "outbound",
+      status: "failed",
+      text: `文件: ${fileName || requestedPath}`,
+      error: (err as Error).message,
+    });
+    throw err;
+  }
+}
+
+function extractFilePathForDelivery(text: string): string | null {
+  const trimmed = text.trim();
+  const quoted = trimmed.match(/["'`](.+?)["'`]/);
+  if (quoted?.[1] && existsSync(stripPathQuotes(quoted[1]))) return quoted[1];
+
+  const filePathPattern =
+    /[A-Za-z]:[\\/][^\r\n<>|?*]*?\.(?:zip|rar|7z|tar|gz|pdf|docx?|xlsx?|csv|pptx?|md|markdown|txt|json|log|png|jpe?g|webp|gif|bmp|mp4|opus)/i;
+  const absolute = trimmed.match(filePathPattern);
+  if (absolute?.[0]) return absolute[0];
+
+  if (/^(?:发|发送|上传|传|给我发|把).{0,12}(?:文件|附件)/.test(trimmed)) {
+    const value = trimmed
+      .replace(/^(?:发|发送|上传|传|给我发|把).{0,12}(?:文件|附件)[:：]?\s*/u, "")
+      .replace(/(?:发我|发送给我|传给我|给我|上传到飞书|到飞书)$/u, "")
+      .trim();
+    return value || null;
+  }
+
+  if (/(?:发我|发送给我|传给我|上传到飞书)/.test(trimmed)) {
+    const value = trimmed
+      .replace(/(?:请|麻烦|帮我|把)/gu, "")
+      .replace(/(?:发我|发送给我|传给我|上传到飞书|这个文件|文件)/gu, "")
+      .replace(/[:：]/gu, "")
+      .trim();
+    return value || null;
+  }
+
+  return null;
+}
+
+function isFileDeliveryRequest(text: string): boolean {
+  const trimmed = text.trim();
+  if (/^\/(?:file|sendfile|文件|发文件)\b/i.test(trimmed)) return true;
+  return /[A-Za-z]:[\\/]/.test(trimmed) && /(?:发我|发送给我|传给我|上传到飞书|发文件|发送文件|文件)/.test(trimmed);
 }
 
 function rememberMessage(messageId: string): boolean {
@@ -1491,6 +1756,17 @@ function formatChatAccepted(item: Extract<ChatWorkItem, { kind: "chat" }>): stri
   ]);
 }
 
+function formatDirectQueuedNotice(item: Extract<ChatWorkItem, { kind: "chat" }>): string {
+  const queuePosition = getWorkQueuePosition(item.chatId, item.id);
+  const waiting = Math.max(queuePosition - 1, 1);
+  return formatBlock("已排队", [
+    `内容: ${item.preview}`,
+    `前面还有 ${waiting} 条消息在处理。`,
+    "完成后只发送最终回复。",
+    "查看状态: /status",
+  ]);
+}
+
 function formatChatCompletion(title: string, item: Extract<ChatWorkItem, { kind: "chat" }>, reply: string): string {
   const summary = formatBlock(title, [
     `任务: ${item.preview}`,
@@ -1919,18 +2195,6 @@ function pushDirectProgress(chatId: string, event: CodexProgressEvent, state: Di
 async function processDirectChatWork(item: Extract<ChatWorkItem, { kind: "chat" }>) {
   console.log(`[Direct] start ${item.id} ${item.chatId.slice(-8)}: ${item.preview}`);
   const run = createConversationRun(item);
-  await sendFeishuTextSafe(
-    item.chatId,
-    formatBlock("Codex 开始处理", [
-      `ID: ${item.id}`,
-      `内容: ${item.preview}`,
-      "模式: 飞书 ⇄ Codex",
-      `心跳: 每 ${formatDuration(heartbeatIntervalMs())} 反馈一次`,
-      formatQueueState(item.chatId),
-      formatNextInstructionAdvice(item.chatId, "busy"),
-    ]),
-    "direct"
-  );
 
   const progress: DirectProgressState = {
     lastSentAt: 0,
@@ -1939,19 +2203,21 @@ async function processDirectChatWork(item: Extract<ChatWorkItem, { kind: "chat" 
     count: 0,
     run,
   };
-  const stopHeartbeat = startDynamicHeartbeat(() => {
-    updateConversationRunHeartbeat(run, progress.latest);
-    void sendFeishuTextSafe(item.chatId, formatConversationHeartbeat(run), "direct");
-  });
+  const quietNoticeTimer = setTimeout(() => {
+    void sendFeishuTextSafe(item.chatId, "还在处理，完成后只发最终回复。可发送 /status 查看状态。", "direct");
+  }, Math.max(30000, Math.min(heartbeatIntervalMs(), 60000)));
 
   try {
     const config = getConfig();
     const reply = await sendPrompt(item.chatId, item.message, {
       timeoutMs: Math.max(config.directReplyTimeoutMs, config.chatTimeoutMs, 60000),
-      onProgress: (event) => pushDirectProgress(item.chatId, event, progress),
+      onProgress: (event) => {
+        updateConversationRunProgress(run, event);
+        progress.latest = event.detail || event.summary;
+      },
     });
     finishConversationRun(run, "done", { result: reply, latest: "Codex 已完成并返回结果" });
-    if (await sendFeishuTextTracked(item.chatId, formatChatCompletion("直连完成", item, reply), "direct")) {
+    if (await sendFeishuTextTracked(item.chatId, truncateFeishuReply(reply), "direct")) {
       markConversationRunNotified(run, "finalNotifiedAt");
     }
     console.log(`  [Direct] ${item.id} done`);
@@ -1974,7 +2240,7 @@ async function processDirectChatWork(item: Extract<ChatWorkItem, { kind: "chat" 
     }
     console.error(`[Direct] failed ${item.id}: ${message}`);
   } finally {
-    stopHeartbeat();
+    clearTimeout(quietNoticeTimer);
   }
 }
 
@@ -2193,6 +2459,50 @@ async function handleCommand(chatId: string, text: string): Promise<string | nul
     ]);
   }
 
+  if (text === "/file" || text === "/sendfile" || text === "/文件" || text === "/发文件") {
+    return formatBlock("文件路径缺失", [
+      "请提供要发送到飞书的本机文件路径。",
+      "示例: /file E:\\work_code\\wyc-project\\output\\report.pdf",
+      "中文写法: /发文件 E:\\work_code\\wyc-project\\output\\report.pdf",
+      "自然语言也支持: 把 E:\\work_code\\wyc-project\\output\\report.pdf 发我",
+      "相对路径会按当前飞书会话工作区解析。",
+    ]);
+  }
+
+  if (/^\/(?:file|sendfile|文件|发文件)\s+/i.test(text) || isFileDeliveryRequest(text)) {
+    const rawPath = /^\/(?:file|sendfile|文件|发文件)\s+/i.test(text)
+      ? text.replace(/^\/(?:file|sendfile|文件|发文件)\s+/i, "").trim()
+      : extractFilePathForDelivery(text);
+    if (!rawPath) {
+      return formatBlock("文件路径缺失", [
+        "没有识别到要发送的本机文件路径。",
+        "示例: /发文件 E:\\work_code\\wyc-project\\output\\report.pdf",
+      ]);
+    }
+    try {
+      const sent = await sendFeishuFile(chatId, rawPath);
+      const viewHint =
+        sent.delivery === "text-preview"
+          ? "已直接发送为飞书可阅读文本。"
+          : sent.delivery === "image"
+            ? "已发送为飞书图片，可在 App 内直接查看。"
+            : sent.delivery === "preview-file"
+              ? "已发送为飞书可预览文件。"
+              : "已发送为普通文件，飞书 App 可能需要下载后查看。";
+      return formatBlock("文件已发送", [
+        `文件: ${sent.fileName}`,
+        `大小: ${formatBytes(sent.size)}`,
+        viewHint,
+        `路径: ${sent.filePath}`,
+      ]);
+    } catch (err) {
+      return formatBlock("文件发送失败", [
+        `原因: ${(err as Error).message}`,
+        "请确认文件存在、不是目录、大小不超过 30MB，图片不超过 10MB，并且飞书应用有文件上传/发消息权限。",
+      ]);
+    }
+  }
+
   if (text === "/reset") {
     await resetSession(chatId);
     return formatBlock("会话重置", ["当前 Codex 会话已重置。", "工作区已保留。"]);
@@ -2203,7 +2513,7 @@ async function handleCommand(chatId: string, text: string): Promise<string | nul
     return formatBlock("消息模式", [
       `当前: ${modeLabel(config.feishuMessageMode)}`,
       config.feishuMessageMode === "direct"
-        ? "普通飞书消息会直接进入 Codex，并把阶段进展直接发回飞书。"
+        ? "普通飞书消息会直接进入 Codex，并且只把最终回复发回飞书。"
         : "普通飞书消息会经过意图识别、任务确认和队列跟踪。",
       "",
       "切换: /mode direct 或 /mode bridge",
@@ -2280,7 +2590,7 @@ async function handleCommand(chatId: string, text: string): Promise<string | nul
       }`,
       `下次复盘: ${formatLocalTime(autoEvolution.nextRunAt)}｜${formatTimeUntil(autoEvolution.nextRunAt)}`,
       "",
-      "指令: /mode 模式，/list 未完成任务，/td 详情，/evo status 自动化状态",
+      "指令: /mode 模式，/list 未完成任务，/td 详情，/file 文件路径，/发文件 文件路径，/evo status 自动化状态",
     ]);
   }
 
@@ -2420,15 +2730,54 @@ wsClient.start({
       if (!msg?.chat_id || !msg?.message_id) return;
       if (!rememberMessage(msg.message_id)) return;
 
+      const messageMode = getConfig().feishuMessageMode;
+      const content = parseJsonObject(msg.content ?? "{}");
+      const msgType = String(msg.message_type ?? msg.msg_type ?? "");
       let text = "";
-      try {
-        text = JSON.parse(msg.content ?? "{}").text?.trim() ?? "";
-      } catch {
-        text = msg.content ?? "";
+      if (typeof content.text === "string") {
+        text = content.text.trim();
+      } else if (msgType === "text" && typeof msg.content === "string") {
+        text = msg.content;
+      }
+
+      if (["file", "image", "audio", "media"].includes(msgType)) {
+        try {
+          const downloaded = await downloadFeishuMessageResource(msg.chat_id, msg, content);
+          if (downloaded) {
+            text = [
+              `用户从飞书发送了一个${downloaded.msgType === "image" ? "图片" : "文件"}，已保存到本机：${downloaded.filePath}`,
+              `文件名: ${downloaded.fileName}`,
+              "请根据这个文件内容继续处理；如果只是收到文件，请简短确认。",
+            ].join("\n");
+            await sendFeishuTextSafe(
+              msg.chat_id,
+              formatBlock("文件已接收", [`文件: ${downloaded.fileName}`, `本机路径: ${downloaded.filePath}`]),
+              messageMode
+            );
+          }
+        } catch (err) {
+          recordMessage({
+            chatId: msg.chat_id,
+            mode: messageMode,
+            direction: "inbound",
+            status: "failed",
+            text: `飞书${msgType}消息`,
+            feishuMessageId: msg.message_id,
+            error: (err as Error).message,
+          });
+          await sendFeishuTextSafe(
+            msg.chat_id,
+            formatBlock("文件接收失败", [
+              `原因: ${(err as Error).message}`,
+              "请确认飞书应用已开通读取消息资源文件权限。",
+            ]),
+            messageMode
+          );
+          return;
+        }
       }
       if (!text) return;
 
-      const messageMode = getConfig().feishuMessageMode;
       recordMessage({
         chatId: msg.chat_id,
         mode: messageMode,
@@ -2473,8 +2822,11 @@ wsClient.start({
 
         if (messageMode === "direct") {
           recordInteraction(msg.chat_id, text, "direct_chat", undefined, messageMode);
+          const wasBusy = runningChats.has(msg.chat_id) || getQueuedWorkCount(msg.chat_id) > 0;
           const work = createChatWork(msg.chat_id, text, "direct");
-          await sendFeishuText(msg.chat_id, formatChatAccepted(work), messageMode);
+          if (wasBusy) {
+            await sendFeishuText(msg.chat_id, formatDirectQueuedNotice(work), messageMode);
+          }
           void processChatQueue(msg.chat_id);
           return;
         }
